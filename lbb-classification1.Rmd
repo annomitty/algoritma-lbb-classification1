@@ -1,0 +1,173 @@
+---
+title: "LBB-Classification1"
+author: "annomitty"
+date: "9/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Call Library yang digunakan.
+```{r}
+library(gtools)
+library(ggplot2)
+library(GGally)
+library(caret)
+library(e1071)
+```
+
+Data: merupakan detail dari setiap penumpang kapal titanic, dengan detail kolom sbb:
+1. PassangerID : ID dari masing-masing penumpang.
+2, Survived : apakah penumpang tersebut selamat dari musibah (1= selamat.) (target variable)
+3. PClass : penumpang berasal dari kelass berapa.
+4. Name : Nama Penumpang.
+5. Sex : Gender penumpang
+6. Age : umumr penumpang.
+7. SibSp : Jumlah saudara atau pasangan yang ada di dalam kapal
+8. Parch : Jumlah orang tau atau anak yang ada di dalam kapal
+9. ticket : Nomor tiker penumpang.
+10. fare : harga tiket penumpang.
+11. cabin : nomor cabin penumpang.
+12. embarked : dari mana penumpang berangkat:
+        - S : Southampton
+        - Q : Queensland
+        - C : Cherbough
+        
+```{r}
+titanic <- read.csv("train.csv")
+```
+Yang menjadi target adalah Survived,
+Tujuan dari LBB ini adalah menentukan kombinasi prediktor apa yang menyebabkan penumpang memiliki kemungkinan selamat lebih besar di kecelakaan titanic.
+
+> DATA EXPLORATORY 
+>> DELETE COLOUMN iD  
+
+```{r}
+titanic  <- titanic[,-1]
+```
+
+
+>> PROPORTION TABLE
+
+```{r}
+prop.table(table(titanic$Survived))
+```
+0 = dead
+1= survived
+PENUMPANGA YANG MENINGGAL SEBANYAK ~62%
+
+DATA PRE-PROCESSING
+Membuang Coloum Name, tiket, cabin, karena tidak mungkin akan berpengaruh dalam per modelan.
+
+```{r}
+titanic <- titanic[, -8]
+```
+
+```{r}
+glimpse(titanic)
+colSums(is.na(titanic))
+```
+Membuang Kolom yang NA, karena akan menganggu permodelan.
+
+```{r}
+titanic <- drop_na(titanic, Age)
+```
+
+> SPLITTING TRAIN-TEST
+
+```{r}
+set.seed(123)
+intrain <- sample(nrow(titanic), nrow(titanic)*0.8)
+titanic_train <- titanic[intrain,]
+titanic_test <- titanic[-intrain,]
+```
+
+> MODELING
+
+```{r}
+model <- glm(formula = Survived~Pclass+Sex+Age+SibSp+Parch+Fare+Embarked, family = "binomial", 
+             data = titanic_train)
+```
+
+```{r}
+summary(model)
+```
+PREDIKTOR YANG SANGAT MENENTUKAN KEMUNGKINAN SURVIVAL RATE DARI KECELAKAAN TITANIC ADALAH P CLASS, SEX, DAN AGE.
+
+> MODEL FITTING
+
+MENGGUNAKAN STEPWISE BACKWARD
+
+```{r}
+library(MASS)
+model_backward <- stepAIC(model, direction="backward")
+```
+```{r}
+summary(model_backward)
+```
+KALAU DI BANDINGKAN DI ANTARA KE-2 MODEL YANG SUDAH DIBUATKAN DIATAS,LEBIH BAIK MENGGUNAKAN MODEL STEPWISE.
+
+DARI MODEL STEPWISE DAPAT DIAMBIL KESIMPULAN:
+TERDAPAT 4 PREDIKTOR YANG LEBIH MENENTUKAN TINGKAT SURVIVAL DI KECELAKAAN TITANIC, YAITU :
+1. PENUMPANG KELAS 1 MEMILIKI KEMUNGKINAN SELAMAT YANG LEBIH RENDAH > TAPI MUNGKIN SAJA INI DISEBABKAN KARENA JUMLAH PENUMPANG KELAS 1 TIDAK BANYAK.
+2. GENDER 
+
+
+> PREDICTION
+
+```{r}
+titanic_test$prob_survival <- predict(model_backward, type = "response", newdata = titanic_test)
+```
+
+```{r}
+titanic_test$prob_survival <- ifelse(titanic_test$prob_survival > 0.5,1,0)
+```
+
+
+```{r}
+ggplot(titanic_test, aes(x=prob_survival)) +
+  geom_density(lwd=0.5) +
+  labs(title = "Distribution of Probability Prediction Data") +
+  theme_minimal()
+```
+DARI MODEL DIATAS GRAFIK TERLIHAT LEBIH DENSE DI KE ARAH 0, YANG ARTINYA AKAN LEBIH BANYAK YANG DEAD.
+
+
+> MODEL EVALUATION
+
+```{r}
+titanic_test$prob_survival <- as.integer(titanic_test$prob_survival)
+```
+
+```{r}
+glimpse(titanic_test)
+```
+```{r}
+table('prediction' = titanic_test$prob_survival, 
+      'actual' = titanic_test$Survived)
+```
+```{r}
+CM <- titanic_test
+CM$Survived <- as.factor(CM$Survived)
+CM$prob_survival <- as.factor(CM$prob_survival)
+```
+
+
+```{r}
+confusionMatrix(data = CM$prob_survival,
+                reference = CM$Survived,
+                positive = "1")
+```
+
+> CONCLUSION
+
+DARI MODEL STEPWISE DAPAT DIAMBIL KESIMPULAN:
+TERDAPAT 4 PREDIKTOR YANG LEBIH MENENTUKAN TINGKAT SURVIVAL DI KECELAKAAN TITANIC, YAITU :
+1. PENUMPANG KELAS 1 MEMILIKI KEMUNGKINAN SELAMAT YANG LEBIH RENDAH > TAPI MUNGKIN SAJA INI DISEBABKAN KARENA JUMLAH PENUMPANG KELAS 1 TIDAK BANYAK.
+2. GENDER WANITA MEMMILIKI KEMUNGKINAN SELAMAT YANG LEBIH TINGGI.
+3. UMUR PENUMPANG, UMUR YANG RENDAH MEMILIKI KEMUNGKINAN SELAMAT YANG LEBIH TINGGI.
+4. PENUMPANG YANG MEMILIKI SAUDARA MEMILIKI KEMUNGKINAN SELAMAT YANG LEBIH TINGGI.
+
+HASIL PREDIKSI DENGAN MENGGUNAKAN LOGISTIK STEPWISE BACKWARD MENDPATKAN ACCURACY SEBESAR 83%
